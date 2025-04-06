@@ -1,0 +1,831 @@
+// src/pages/project/ProjectBoard.js
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { DragDropContext, Droppable } from 'react-beautiful-dnd';
+import { 
+  getProjectById, 
+  updateProject 
+} from '../../store/actions/projectActions';
+import { 
+  getTasks, 
+  updateTaskStatus, 
+  createTask 
+} from '../../store/actions/taskActions';
+import { 
+  setSelectedView 
+} from '../../store/actions/uiActions';
+
+import ProjectHeader from './ProjectHeader';
+import TaskColumn from './TaskColumn';
+import TaskModal from '../task/TaskModal';
+import Spinner from '../../components/layout/Spinner';
+
+const ProjectBoard = () => {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  
+  const { currentProject, loading: projectLoading } = useSelector(state => state.project);
+  const { tasks, tasksByStatus, loading: tasksLoading } = useSelector(state => state.task);
+  const { user } = useSelector(state => state.auth);
+  
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [currentTask, setCurrentTask] = useState(null);
+  const [isNewTask, setIsNewTask] = useState(false);
+  
+  useEffect(() => {
+    dispatch(setSelectedView('board'));
+    dispatch(getProjectById(projectId));
+    dispatch(getTasks(projectId));
+  }, [dispatch, projectId]);
+  
+  const onDragEnd = (result) => {
+    const { destination, source, draggableId } = result;
+    
+    // If dropped outside of a droppable area
+    if (!destination) return;
+    
+    // If dropped in the same position
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+    
+    // Get the task that was dragged
+    const task = tasks.find(task => task._id === draggableId);
+    if (!task) return;
+    
+    // Calculate new order based on destination position
+    const destTasks = tasksByStatus[destination.droppableId] || [];
+    let newOrder = 0;
+    
+    if (destTasks.length === 0) {
+      // If there are no tasks in the destination column
+      newOrder = 1000; // Start with a high number to allow for future insertions at the beginning
+    } else if (destination.index === 0) {
+      // If dropped at the start of the column
+      newOrder = destTasks[0].order / 2;
+    } else if (destination.index >= destTasks.length) {
+      // If dropped at the end of the column
+      newOrder = destTasks[destTasks.length - 1].order + 1000;
+    } else {
+      // If dropped in the middle, set order to the average of the surrounding tasks
+      const prevTask = destTasks[destination.index - 1];
+      const nextTask = destTasks[destination.index];
+      newOrder = (prevTask.order + nextTask.order) / 2;
+    }
+    
+    // Update task status and order
+    dispatch(updateTaskStatus(task._id, destination.droppableId, newOrder));
+  };
+  
+  const handleAddTask = () => {
+    setCurrentTask(null);
+    setIsNewTask(true);
+    setShowTaskModal(true);
+  };
+  
+  const handleEditTask = (task) => {
+    setCurrentTask(task);
+    setIsNewTask(false);
+    setShowTaskModal(true);
+  };
+  
+  const handleCloseTaskModal = () => {
+    setShowTaskModal(false);
+    setCurrentTask(null);
+    setIsNewTask(false);
+  };
+  
+  const handleSaveTask = async (taskData) => {
+    if (isNewTask) {
+      // Create new task
+      const newTask = await dispatch(createTask(projectId, {
+        ...taskData,
+        status: taskData.status || (currentProject?.settings?.taskViews?.board?.columns[0]?.name || 'To Do')
+      }));
+      
+      if (newTask) {
+        setShowTaskModal(false);
+        setCurrentTask(null);
+        setIsNewTask(false);
+      }
+    } else if (currentTask) {
+      // Update existing task
+      // This will be handled in the TaskModal component
+      setShowTaskModal(false);
+      setCurrentTask(null);
+      setIsNewTask(false);
+    }
+  };
+  
+  if (projectLoading || tasksLoading) {
+    return <Spinner />;
+  }
+  
+  if (!currentProject) {
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">Project not found</h2>
+        <button
+          onClick={() => navigate('/workspaces')}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          Go to Workspaces
+        </button>
+      </div>
+    );
+  }
+  
+  // Get board columns from project settings
+  const columns = currentProject.settings?.taskViews?.board?.columns || [
+    { name: 'To Do', color: '#f3f4f6' },
+    { name: 'In Progress', color: '#dbeafe' },
+    { name: 'Review', color: '#fef3c7' },
+    { name: 'Done', color: '#d1fae5' }
+  ];
+  
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+      <ProjectHeader project={currentProject} onAddTask={handleAddTask} />
+      
+      <div className="flex-1 overflow-x-auto p-6">
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="flex h-full space-x-4">
+            {columns.map((column, index) => (
+              <Droppable key={column.name} droppableId={column.name}>
+                {(provided) => (
+                  <TaskColumn
+                    title={column.name}
+                    color={column.color}
+                    tasks={tasksByStatus[column.name] || []}
+                    provided={provided}
+                    onAddTask={() => {
+                      setCurrentTask(null);
+                      setIsNewTask(true);
+                      setShowTaskModal(true);
+                    }}
+                    onTaskClick={handleEditTask}
+                  />
+                )}
+              </Droppable>
+            ))}
+          </div>
+        </DragDropContext>
+      </div>
+      
+      {showTaskModal && (
+        <TaskModal
+          isOpen={showTaskModal}
+          onClose={handleCloseTaskModal}
+          onSave={handleSaveTask}
+          task={currentTask}
+          isNew={isNewTask}
+          projectId={projectId}
+          statuses={columns.map(col => col.name)}
+        />
+      )}
+    </div>
+  );
+};
+
+export default ProjectBoard;
+
+// src/pages/project/ProjectHeader.js
+import React, { useState } from 'react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  Grid, 
+  List, 
+  Calendar, 
+  Filter, 
+  Plus, 
+  MoreHorizontal,
+  Settings,
+  Trash,
+  Users
+} from 'lucide-react';
+import { setSelectedView } from '../../store/actions/uiActions';
+import { deleteProject } from '../../store/actions/projectActions';
+import ProjectSettingsModal from './ProjectSettingsModal';
+
+const ProjectHeader = ({ project, onAddTask }) => {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  
+  const { selectedView } = useSelector(state => state.ui);
+  const { user } = useSelector(state => state.auth);
+  
+  const [showMenu, setShowMenu] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  
+  const isAdmin = 
+    project.owner === user?._id || 
+    project.members?.some(member => 
+      member.userId === user?._id && member.role === 'admin'
+    );
+  
+  const handleViewChange = (view) => {
+    dispatch(setSelectedView(view));
+    navigate(`/projects/${projectId}/${view}`);
+  };
+  
+  const handleDeleteProject = () => {
+    dispatch(deleteProject(projectId));
+    navigate(`/workspaces/${project.workspaceId}`);
+  };
+  
+  return (
+    <header className="bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-3">
+        <div className="flex items-center">
+          <h2 className="text-xl font-semibold">{project.name}</h2>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              className="py-2 pl-10 pr-4 w-64 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+            </svg>
+          </div>
+          
+          <div className="flex -space-x-2">
+            {project.members?.slice(0, 3).map((member, index) => (
+              <div 
+                key={index}
+                className="w-8 h-8 rounded-full border-2 border-white bg-indigo-500 flex items-center justify-center text-white text-xs font-medium"
+                title={member.name || `Member ${index + 1}`}
+              >
+                {member.name ? member.name.charAt(0).toUpperCase() : 'M'}
+              </div>
+            ))}
+            
+            {project.members && project.members.length > 3 && (
+              <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-gray-600 text-xs">
+                +{project.members.length - 3}
+              </div>
+            )}
+            
+            <button
+              className="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-gray-600 text-xs hover:bg-gray-200"
+              title="Manage team members"
+            >
+              <Users size={14} />
+            </button>
+          </div>
+          
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-2 rounded-lg hover:bg-gray-100"
+            >
+              <MoreHorizontal size={20} />
+            </button>
+            
+            {showMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-30">
+                <button
+                  onClick={() => {
+                    setShowSettingsModal(true);
+                    setShowMenu(false);
+                  }}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <Settings size={16} className="mr-2" />
+                  Project settings
+                </button>
+                
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+                        handleDeleteProject();
+                      }
+                      setShowMenu(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                  >
+                    <Trash size={16} className="mr-2" />
+                    Delete project
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* View selector */}
+      <div className="px-6 py-2 flex items-center border-t border-gray-200">
+        <div className="flex space-x-1">
+          <button 
+            onClick={() => handleViewChange('board')} 
+            className={`px-3 py-1 rounded-md flex items-center ${selectedView === 'board' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            <Grid size={16} className="mr-2" />
+            Board
+          </button>
+          <button 
+            onClick={() => handleViewChange('list')} 
+            className={`px-3 py-1 rounded-md flex items-center ${selectedView === 'list' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            <List size={16} className="mr-2" />
+            List
+          </button>
+          <button 
+            onClick={() => handleViewChange('calendar')} 
+            className={`px-3 py-1 rounded-md flex items-center ${selectedView === 'calendar' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            <Calendar size={16} className="mr-2" />
+            Calendar
+          </button>
+        </div>
+        
+        <div className="ml-auto flex items-center space-x-2">
+          <button className="px-3 py-1 rounded-md text-gray-700 hover:bg-gray-100 flex items-center">
+            <Filter size={16} className="mr-2" />
+            Filter
+          </button>
+          <button 
+            onClick={onAddTask}
+            className="px-3 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 flex items-center"
+          >
+            <Plus size={16} className="mr-2" />
+            Add Task
+          </button>
+        </div>
+      </div>
+      
+      {showSettingsModal && (
+        <ProjectSettingsModal 
+          project={project}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+    </header>
+  );
+};
+
+export default ProjectHeader;
+
+// src/pages/project/TaskColumn.js
+import React from 'react';
+import { Draggable } from 'react-beautiful-dnd';
+import { Plus } from 'lucide-react';
+import TaskCard from '../task/TaskCard';
+
+const TaskColumn = ({ title, color, tasks, provided, onAddTask, onTaskClick }) => {
+  return (
+    <div 
+      className="w-80 flex-shrink-0 flex flex-col h-full"
+      ref={provided.innerRef}
+      {...provided.droppableProps}
+    >
+      <div className="bg-gray-100 rounded-t-lg px-3 py-2 flex items-center justify-between">
+        <div className="flex items-center">
+          <div 
+            className="w-3 h-3 rounded-full mr-2" 
+            style={{ backgroundColor: color || '#9ca3af' }}
+          ></div>
+          <h3 className="font-medium">{title}</h3>
+        </div>
+        <span className="bg-gray-200 text-gray-800 text-xs font-medium px-2 py-0.5 rounded-full">
+          {tasks.length}
+        </span>
+      </div>
+      
+      <div className="mt-2 space-y-3 min-h-0 overflow-y-auto flex-1 pb-4">
+        {tasks.map((task, index) => (
+          <Draggable key={task._id} draggableId={task._id} index={index}>
+            {(provided, snapshot) => (
+              <TaskCard
+                task={task}
+                provided={provided}
+                isDragging={snapshot.isDragging}
+                onClick={() => onTaskClick(task)}
+              />
+            )}
+          </Draggable>
+        ))}
+        {provided.placeholder}
+        
+        <button 
+          onClick={onAddTask}
+          className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 flex items-center justify-center"
+        >
+          <Plus size={16} className="mr-1" />
+          Add Task
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default TaskColumn;
+
+// src/pages/task/TaskCard.js
+import React from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { Clock, MoreHorizontal } from 'lucide-react';
+
+const TaskCard = ({ task, provided, isDragging, onClick }) => {
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-100 text-red-800';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'low':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  const calculateDaysRemaining = (dueDate) => {
+    if (!dueDate) return null;
+    
+    const today = new Date();
+    const due = new Date(dueDate);
+    const diffTime = due - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+  
+  const daysRemaining = calculateDaysRemaining(task.dueDate);
+  
+  return (
+    <div
+      ref={provided.innerRef}
+      {...provided.draggableProps}
+      {...provided.dragHandleProps}
+      onClick={onClick}
+      className={`bg-white p-3 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer ${
+        isDragging ? 'shadow-md' : ''
+      }`}
+    >
+      <h4 className="font-medium mb-2">{task.title}</h4>
+      
+      {task.description && (
+        <p className="text-sm text-gray-500 mb-3 line-clamp-2">{task.description}</p>
+      )}
+      
+      <div className="flex flex-wrap gap-2 mb-3">
+        {task.priority && (
+          <span className={`text-xs px-2 py-0.5 rounded-full ${getPriorityColor(task.priority)}`}>
+            {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+          </span>
+        )}
+        
+        {task.tags && task.tags.map((tag, index) => (
+          <span key={index} className="bg-gray-100 text-gray-800 text-xs px-2 py-0.5 rounded-full">
+            {tag}
+          </span>
+        ))}
+      </div>
+      
+      {task.dueDate && (
+        <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
+          <div className="flex items-center">
+            <Clock size={14} className="mr-1" />
+            <span className={`${daysRemaining < 2 ? 'text-red-600 font-medium' : ''}`}>
+              {daysRemaining > 0
+                ? `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`
+                : daysRemaining === 0
+                ? 'Due today'
+                : `${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? '' : 's'} overdue`}
+            </span>
+          </div>
+        </div>
+      )}
+      
+      <div className="flex items-center justify-between">
+        <div className="flex -space-x-2">
+          {task.assignees && task.assignees.map((assignee, index) => (
+            <div
+              key={index}
+              className="w-7 h-7 rounded-full border border-white bg-indigo-500 flex items-center justify-center text-white text-xs font-medium"
+              title={assignee.name || `Assignee ${index + 1}`}
+            >
+              {assignee.name ? assignee.name.charAt(0).toUpperCase() : 'A'}
+            </div>
+          ))}
+        </div>
+        
+        <button 
+          className="text-gray-400 hover:text-gray-600"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Add task menu logic here
+          }}
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default TaskCard;
+
+// src/pages/task/TaskModal.js
+import React, { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { format } from 'date-fns';
+import { X, Users, Calendar, Tag, Flag } from 'lucide-react';
+import { updateTask, deleteTask } from '../../store/actions/taskActions';
+
+const TaskModal = ({ 
+  isOpen, 
+  onClose, 
+  onSave, 
+  task, 
+  isNew, 
+  projectId, 
+  statuses 
+}) => {
+  const dispatch = useDispatch();
+  const { currentProject } = useSelector(state => state.project);
+  const { user } = useSelector(state => state.auth);
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    status: statuses[0],
+    priority: 'medium',
+    assignees: [],
+    dueDate: '',
+    tags: []
+  });
+  
+  useEffect(() => {
+    if (task) {
+      setFormData({
+        title: task.title || '',
+        description: task.description || '',
+        status: task.status || statuses[0],
+        priority: task.priority || 'medium',
+        assignees: task.assignees || [],
+        dueDate: task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd') : '',
+        tags: task.tags || []
+      });
+    } else {
+      setFormData({
+        title: '',
+        description: '',
+        status: statuses[0],
+        priority: 'medium',
+        assignees: [user?._id],
+        dueDate: '',
+        tags: []
+      });
+    }
+  }, [task, statuses, user]);
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    const taskData = {
+      ...formData,
+      dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined
+    };
+    
+    if (isNew) {
+      onSave(taskData);
+    } else {
+      dispatch(updateTask(task._id, taskData));
+      onClose();
+    }
+  };
+  
+  const handleDelete = () => {
+    if (window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+      dispatch(deleteTask(task._id));
+      onClose();
+    }
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-lg font-semibold">
+            {isNew ? 'Create Task' : 'Edit Task'}
+          </h3>
+          <button 
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-500"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="flex-1 overflow-auto p-4">
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                Title
+              </label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Task title"
+                required
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                Description
+              </label>
+              <textarea
+                id="description"
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                rows={4}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Task description"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                  Status
+                </label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  className="mt-1 block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                >
+                  {statuses.map(status => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="priority" className="block text-sm font-medium text-gray-700">
+                  Priority
+                </label>
+                <div className="mt-1 flex items-center">
+                  <Flag size={16} className="text-gray-400 mr-2" />
+                  <select
+                    id="priority"
+                    name="priority"
+                    value={formData.priority}
+                    onChange={handleChange}
+                    className="block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="assignees" className="block text-sm font-medium text-gray-700">
+                  Assignees
+                </label>
+                <div className="mt-1 flex items-center">
+                  <Users size={16} className="text-gray-400 mr-2" />
+                  <select
+                    id="assignees"
+                    name="assignees"
+                    multiple
+                    value={formData.assignees}
+                    onChange={(e) => {
+                      const options = e.target.options;
+                      const selectedValues = [];
+                      for (let i = 0; i < options.length; i++) {
+                        if (options[i].selected) {
+                          selectedValues.push(options[i].value);
+                        }
+                      }
+                      setFormData(prev => ({ ...prev, assignees: selectedValues }));
+                    }}
+                    className="block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  >
+                    {currentProject?.members?.map(member => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.name || member.userId}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Hold Ctrl/Cmd to select multiple
+                </p>
+              </div>
+              
+              <div>
+                <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700">
+                  Due Date
+                </label>
+                <div className="mt-1 flex items-center">
+                  <Calendar size={16} className="text-gray-400 mr-2" />
+                  <input
+                    type="date"
+                    id="dueDate"
+                    name="dueDate"
+                    value={formData.dueDate}
+                    onChange={handleChange}
+                    className="block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label htmlFor="tags" className="block text-sm font-medium text-gray-700">
+                Tags
+              </label>
+              <div className="mt-1 flex items-center">
+                <Tag size={16} className="text-gray-400 mr-2" />
+                <input
+                  type="text"
+                  id="tags"
+                  name="tags"
+                  value={formData.tags.join(', ')}
+                  onChange={(e) => {
+                    const tagsString = e.target.value;
+                    const tagsArray = tagsString
+                      .split(',')
+                      .map(tag => tag.trim())
+                      .filter(tag => tag !== '');
+                    setFormData(prev => ({ ...prev, tags: tagsArray }));
+                  }}
+                  className="block w-full bg-white border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  placeholder="Comma-separated tags"
+                />
+              </div>
+            </div>
+          </div>
+        </form>
+        
+        <div className="p-4 border-t border-gray-200 flex justify-between">
+          {!isNew && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Delete
+            </button>
+          )}
+          
+          <div className="flex space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            
+            <button
+              type="submit"
+              onClick={handleSubmit}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              {isNew ? 'Create' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default TaskModal;

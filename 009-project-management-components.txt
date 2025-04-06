@@ -1,0 +1,860 @@
+// src/components/layout/Navbar.js
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
+import { logout } from '../../store/actions/authActions';
+import { getNotifications, markNotificationRead } from '../../store/actions/notificationActions';
+import { Bell, Settings, LogOut, User, ExternalLink } from 'lucide-react';
+import NotificationItem from '../notifications/NotificationItem';
+
+const Navbar = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useSelector(state => state.auth);
+  const { notifications } = useSelector(state => state.notification);
+  
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  
+  const userMenuRef = useRef(null);
+  const notificationRef = useRef(null);
+  
+  // Handle clicks outside of menus to close them
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
+  // Load notifications when component mounts
+  useEffect(() => {
+    if (isAuthenticated) {
+      dispatch(getNotifications());
+    }
+  }, [dispatch, isAuthenticated]);
+  
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate('/login');
+  };
+  
+  const toggleUserMenu = () => {
+    setShowUserMenu(!showUserMenu);
+  };
+  
+  const toggleNotifications = () => {
+    setShowNotifications(!showNotifications);
+    setShowUserMenu(false);
+  };
+  
+  const handleNotificationClick = (notification) => {
+    if (!notification.read) {
+      dispatch(markNotificationRead(notification._id));
+    }
+    
+    // Navigate based on notification type
+    if (notification.relatedTo.type === 'task') {
+      navigate(`/tasks/${notification.relatedTo.id}`);
+    } else if (notification.relatedTo.type === 'project') {
+      navigate(`/projects/${notification.relatedTo.id}`);
+    } else if (notification.relatedTo.type === 'workspace') {
+      navigate(`/workspaces/${notification.relatedTo.id}`);
+    }
+    
+    setShowNotifications(false);
+  };
+  
+  const unreadCount = notifications ? notifications.filter(n => !n.read).length : 0;
+  
+  // Render authentication links
+  const authLinks = (
+    <div className="flex items-center space-x-4">
+      {/* Notifications */}
+      <div className="relative" ref={notificationRef}>
+        <button 
+          className="p-2 rounded-lg hover:bg-gray-100 relative"
+          onClick={toggleNotifications}
+        >
+          <Bell size={20} />
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"></span>
+          )}
+        </button>
+        
+        {showNotifications && (
+          <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg overflow-hidden z-30">
+            <div className="p-3 border-b border-gray-200">
+              <h3 className="font-medium">Notifications</h3>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              {notifications && notifications.length > 0 ? (
+                notifications.slice(0, 10).map(notification => (
+                  <NotificationItem 
+                    key={notification._id} 
+                    notification={notification} 
+                    onClick={() => handleNotificationClick(notification)}
+                  />
+                ))
+              ) : (
+                <div className="p-4 text-center text-gray-500">
+                  No notifications
+                </div>
+              )}
+            </div>
+            {notifications && notifications.length > 10 && (
+              <div className="p-2 border-t border-gray-200 text-center">
+                <Link 
+                  to="/notifications" 
+                  className="text-sm text-indigo-600 hover:text-indigo-800"
+                  onClick={() => setShowNotifications(false)}
+                >
+                  View all notifications
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* User menu */}
+      <div className="relative" ref={userMenuRef}>
+        <button 
+          className="flex items-center space-x-2"
+          onClick={toggleUserMenu}
+        >
+          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-sm font-medium">
+            {user && user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
+          </div>
+        </button>
+        
+        {showUserMenu && (
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-30">
+            <div className="p-3 border-b border-gray-200">
+              <p className="font-medium">{user ? user.name : 'User'}</p>
+              <p className="text-sm text-gray-500">{user ? user.email : ''}</p>
+            </div>
+            <div className="py-1">
+              <Link 
+                to="/profile" 
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                onClick={() => setShowUserMenu(false)}
+              >
+                <User size={16} className="mr-2" /> Profile
+              </Link>
+              <Link 
+                to="/settings" 
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                onClick={() => setShowUserMenu(false)}
+              >
+                <Settings size={16} className="mr-2" /> Settings
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+              >
+                <LogOut size={16} className="mr-2" /> Logout
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  
+  // Render guest links
+  const guestLinks = (
+    <div className="flex items-center space-x-4">
+      <Link 
+        to="/login" 
+        className="text-gray-700 hover:text-indigo-600 font-medium"
+      >
+        Log In
+      </Link>
+      <Link 
+        to="/register" 
+        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium"
+      >
+        Sign Up
+      </Link>
+    </div>
+  );
+  
+  return (
+    <nav className="bg-white shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          <div className="flex items-center">
+            <Link to="/" className="flex-shrink-0 flex items-center">
+              <h1 className="text-xl font-bold text-indigo-600">Planify</h1>
+            </Link>
+          </div>
+          
+          <div className="flex items-center">
+            {isAuthenticated ? authLinks : guestLinks}
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+};
+
+export default Navbar;
+
+// src/components/routing/PrivateRoute.js
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import Spinner from '../layout/Spinner';
+import Sidebar from '../layout/Sidebar';
+
+const PrivateRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useSelector(state => state.auth);
+  const { sidebarCollapsed } = useSelector(state => state.ui);
+  
+  if (loading) {
+    return <Spinner />;
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+  
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar />
+      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
+        sidebarCollapsed ? 'ml-16' : 'ml-64'
+      }`}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+export default PrivateRoute;
+
+// src/components/layout/Sidebar.js
+import React from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
+import { toggleSidebar } from '../../store/actions/uiActions';
+import { 
+  Home, 
+  Folder, 
+  Users, 
+  Clock, 
+  BarChart2, 
+  Menu, 
+  X, 
+  ChevronDown, 
+  ChevronRight,
+  Plus 
+} from 'lucide-react';
+
+const Sidebar = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  
+  const { sidebarCollapsed } = useSelector(state => state.ui);
+  const { user } = useSelector(state => state.auth);
+  const { workspaces } = useSelector(state => state.workspace);
+  
+  const toggleSidebarCollapse = () => {
+    dispatch(toggleSidebar(!sidebarCollapsed));
+  };
+  
+  return (
+    <div className={`bg-white border-r border-gray-200 fixed h-full transition-all duration-300 z-20 ${
+      sidebarCollapsed ? 'w-16' : 'w-64'
+    }`}>
+      <div className="p-4 flex items-center justify-between border-b border-gray-200">
+        {!sidebarCollapsed && <h1 className="font-bold text-xl text-indigo-600">Planify</h1>}
+        <button 
+          onClick={toggleSidebarCollapse} 
+          className="p-1 rounded-lg hover:bg-gray-100"
+        >
+          {sidebarCollapsed ? <Menu size={20} /> : <X size={20} />}
+        </button>
+      </div>
+      
+      {/* User profile */}
+      <div className="p-4 flex items-center border-b border-gray-200">
+        <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-medium">
+          {user && user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
+        </div>
+        {!sidebarCollapsed && (
+          <div className="ml-3 overflow-hidden">
+            <p className="text-sm font-medium truncate">
+              {user ? user.name : 'User'}
+            </p>
+            <p className="text-xs text-gray-500 truncate">
+              {user ? user.email : ''}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="px-2 py-4">
+        <div className={`mb-4 ${!sidebarCollapsed && 'px-2'}`}>
+          {!sidebarCollapsed && <p className="text-xs uppercase text-gray-500 font-semibold mb-2">Main</p>}
+          <ul className="space-y-1">
+            <li>
+              <Link
+                to="/"
+                className={`flex items-center p-2 rounded-lg ${
+                  location.pathname === '/' 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <Home size={18} />
+                {!sidebarCollapsed && <span className="ml-3">Dashboard</span>}
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/workspaces"
+                className={`flex items-center p-2 rounded-lg ${
+                  location.pathname.includes('/workspaces') || location.pathname.includes('/projects')
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <Folder size={18} />
+                {!sidebarCollapsed && <span className="ml-3">Projects</span>}
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/team"
+                className={`flex items-center p-2 rounded-lg ${
+                  location.pathname === '/team' 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <Users size={18} />
+                {!sidebarCollapsed && <span className="ml-3">Team</span>}
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/time-tracking"
+                className={`flex items-center p-2 rounded-lg ${
+                  location.pathname === '/time-tracking' 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <Clock size={18} />
+                {!sidebarCollapsed && <span className="ml-3">Time Tracking</span>}
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/reports"
+                className={`flex items-center p-2 rounded-lg ${
+                  location.pathname === '/reports' 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <BarChart2 size={18} />
+                {!sidebarCollapsed && <span className="ml-3">Reports</span>}
+              </Link>
+            </li>
+          </ul>
+        </div>
+        
+        {!sidebarCollapsed && workspaces && workspaces.length > 0 && (
+          <div className="px-2 mb-4">
+            <p className="text-xs uppercase text-gray-500 font-semibold mb-2">Workspaces</p>
+            <ul className="space-y-1">
+              {workspaces.map(workspace => (
+                <li key={workspace._id}>
+                  <button 
+                    onClick={() => navigate(`/workspaces/${workspace._id}`)}
+                    className={`w-full text-left flex items-center p-2 rounded-lg ${
+                      location.pathname === `/workspaces/${workspace._id}` 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-800 hover:bg-indigo-50 hover:text-indigo-700'
+                    }`}
+                  >
+                    <div 
+                      className="w-2 h-2 rounded-full" 
+                      style={{ backgroundColor: workspace.settings?.color || '#6366f1' }}
+                    ></div>
+                    <span className="ml-3 truncate">{workspace.name}</span>
+                  </button>
+                </li>
+              ))}
+              <li>
+                <Link 
+                  to="/workspaces/new" 
+                  className="w-full text-left flex items-center p-2 rounded-lg text-indigo-600 hover:bg-indigo-50"
+                >
+                  <Plus size={16} />
+                  <span className="ml-3">Add Workspace</span>
+                </Link>
+              </li>
+            </ul>
+          </div>
+        )}
+      </nav>
+    </div>
+  );
+};
+
+export default Sidebar;
+
+// src/components/layout/Spinner.js
+import React from 'react';
+
+const Spinner = () => {
+  return (
+    <div className="flex justify-center items-center h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+    </div>
+  );
+};
+
+export default Spinner;
+
+// src/components/notifications/NotificationItem.js
+import React from 'react';
+import { formatDistanceToNow } from 'date-fns';
+
+const NotificationItem = ({ notification, onClick }) => {
+  const getIcon = () => {
+    switch (notification.type) {
+      case 'assignment':
+        return (
+          <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+              <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
+            </svg>
+          </div>
+        );
+      case 'mention':
+        return (
+          <div className="bg-purple-100 text-purple-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M14.243 5.757a6 6 0 10-.986 9.284 1 1 0 111.087 1.678A8 8 0 1118 10a3 3 0 01-4.8 2.401A4 4 0 1114 10a1 1 0 102 0c0-1.537-.586-3.07-1.757-4.243zM12 10a2 2 0 10-4 0 2 2 0 004 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+        );
+      case 'due_date':
+        return (
+          <div className="bg-yellow-100 text-yellow-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+            </svg>
+          </div>
+        );
+      case 'comment':
+        return (
+          <div className="bg-green-100 text-green-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" clipRule="evenodd" />
+            </svg>
+          </div>
+        );
+      case 'status_change':
+        return (
+          <div className="bg-indigo-100 text-indigo-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M8 5a1 1 0 100 2h5.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L13.586 5H8zM12 15a1 1 0 100-2H6.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L6.414 15H12z" />
+            </svg>
+          </div>
+        );
+      case 'project_invite':
+        return (
+          <div className="bg-red-100 text-red-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+            </svg>
+          </div>
+        );
+      default:
+        return (
+          <div className="bg-gray-100 text-gray-600 p-2 rounded-full">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div 
+      className={`p-3 border-b border-gray-200 hover:bg-gray-50 cursor-pointer ${
+        notification.read ? 'bg-white' : 'bg-blue-50'
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex">
+        <div className="flex-shrink-0">
+          {getIcon()}
+        </div>
+        <div className="ml-3 flex-1">
+          <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+          <p className="text-sm text-gray-500">{notification.content}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default NotificationItem;
+
+// src/pages/auth/Login.js
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { login } from '../../store/actions/authActions';
+import Spinner from '../../components/layout/Spinner';
+
+const Login = () => {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { isAuthenticated, loading } = useSelector(state => state.auth);
+  
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  
+  const { email, password } = formData;
+  
+  useEffect(() => {
+    // Redirect if authenticated
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+  
+  const onChange = e => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+  
+  const onSubmit = e => {
+    e.preventDefault();
+    dispatch(login(email, password));
+  };
+  
+  if (loading) {
+    return <Spinner />;
+  }
+  
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h1 className="text-center text-3xl font-extrabold text-indigo-600">Planify</h1>
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          Sign in to your account
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Or{' '}
+          <Link to="/register" className="font-medium text-indigo-600 hover:text-indigo-500">
+            create a new account
+          </Link>
+        </p>
+      </div>
+
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <form className="space-y-6" onSubmit={onSubmit}>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={onChange}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={onChange}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+                  Remember me
+                </label>
+              </div>
+
+              <div className="text-sm">
+                <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
+                  Forgot your password?
+                </Link>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                Sign in
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;
+
+// src/pages/auth/Register.js
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { register } from '../../store/actions/authActions';
+import Spinner from '../../components/layout/Spinner';
+
+const Register = () => {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { isAuthenticated, loading } = useSelector(state => state.auth);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    password2: ''
+  });
+  
+  const [errors, setErrors] = useState({});
+  
+  const { name, email, password, password2 } = formData;
+  
+  useEffect(() => {
+    // Redirect if authenticated
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+  
+  const onChange = e => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    
+    // Clear validation errors when input changes
+    if (errors[e.target.name]) {
+      setErrors({ ...errors, [e.target.name]: null });
+    }
+  };
+  
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    
+    if (!email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Email is invalid';
+    }
+    
+    if (!password) {
+      newErrors.password = 'Password is required';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    
+    if (password !== password2) {
+      newErrors.password2 = 'Passwords do not match';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+  
+  const onSubmit = e => {
+    e.preventDefault();
+    
+    if (validateForm()) {
+      dispatch(register({ name, email, password }));
+    }
+  };
+  
+  if (loading) {
+    return <Spinner />;
+  }
+  
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h1 className="text-center text-3xl font-extrabold text-indigo-600">Planify</h1>
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          Create your account
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Or{' '}
+          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+            sign in to your existing account
+          </Link>
+        </p>
+      </div>
+
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <form className="space-y-6" onSubmit={onSubmit}>
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                Full name
+              </label>
+              <div className="mt-1">
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={onChange}
+                  className={`appearance-none block w-full px-3 py-2 border ${
+                    errors.name ? 'border-red-300' : 'border-gray-300'
+                  } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                />
+                {errors.name && (
+                  <p className="mt-2 text-sm text-red-600">{errors.name}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={onChange}
+                  className={`appearance-none block w-full px-3 py-2 border ${
+                    errors.email ? 'border-red-300' : 'border-gray-300'
+                  } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                />
+                {errors.email && (
+                  <p className="mt-2 text-sm text-red-600">{errors.email}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={password}
+                  onChange={onChange}
+                  className={`appearance-none block w-full px-3 py-2 border ${
+                    errors.password ? 'border-red-300' : 'border-gray-300'
+                  } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                />
+                {errors.password && (
+                  <p className="mt-2 text-sm text-red-600">{errors.password}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="password2" className="block text-sm font-medium text-gray-700">
+                Confirm password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password2"
+                  name="password2"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={password2}
+                  onChange={onChange}
+                  className={`appearance-none block w-full px-3 py-2 border ${
+                    errors.password2 ? 'border-red-300' : 'border-gray-300'
+                  } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                />
+                {errors.password2 && (
+                  <p className="mt-2 text-sm text-red-600">{errors.password2}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                Register
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Register;

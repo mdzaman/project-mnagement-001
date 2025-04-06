@@ -1,0 +1,1035 @@
+// src/store/actions/authActions.js
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import {
+  USER_LOADED,
+  AUTH_ERROR,
+  LOGIN_SUCCESS,
+  LOGIN_FAIL,
+  LOGOUT,
+  REGISTER_SUCCESS,
+  REGISTER_FAIL,
+  UPDATE_PROFILE_SUCCESS
+} from '../types';
+import { setAuthToken } from '../../utils/setAuthToken';
+
+// Load User
+export const loadUser = () => async dispatch => {
+  if (localStorage.token) {
+    setAuthToken(localStorage.token);
+  }
+
+  try {
+    const res = await axios.get('/api/auth/me');
+
+    dispatch({
+      type: USER_LOADED,
+      payload: res.data
+    });
+  } catch (err) {
+    dispatch({
+      type: AUTH_ERROR
+    });
+  }
+};
+
+// Register User
+export const register = ({ name, email, password }) => async dispatch => {
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  const body = JSON.stringify({ name, email, password });
+
+  try {
+    const res = await axios.post('/api/auth/register', body, config);
+
+    dispatch({
+      type: REGISTER_SUCCESS,
+      payload: res.data
+    });
+
+    dispatch(loadUser());
+    toast.success('Registration successful');
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => toast.error(error.msg));
+    }
+
+    dispatch({
+      type: REGISTER_FAIL
+    });
+  }
+};
+
+// Login User
+export const login = (email, password) => async dispatch => {
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  const body = JSON.stringify({ email, password });
+
+  try {
+    const res = await axios.post('/api/auth/login', body, config);
+
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: res.data
+    });
+
+    dispatch(loadUser());
+    toast.success('Login successful');
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => toast.error(error.msg));
+    } else {
+      toast.error(err.response.data.message || 'Login failed');
+    }
+
+    dispatch({
+      type: LOGIN_FAIL
+    });
+  }
+};
+
+// Update Profile
+export const updateProfile = (formData) => async dispatch => {
+  try {
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+
+    const res = await axios.patch('/api/users/me', formData, config);
+
+    dispatch({
+      type: UPDATE_PROFILE_SUCCESS,
+      payload: res.data.user
+    });
+
+    toast.success('Profile updated successfully');
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => toast.error(error.msg));
+    } else {
+      toast.error(err.response.data.message || 'Profile update failed');
+    }
+  }
+};
+
+// Forgot Password
+export const forgotPassword = (email) => async dispatch => {
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  const body = JSON.stringify({ email });
+
+  try {
+    await axios.post('/api/auth/forgot-password', body, config);
+    toast.success('Password reset link sent to your email');
+  } catch (err) {
+    toast.error(err.response.data.message || 'Failed to send reset email');
+  }
+};
+
+// Reset Password
+export const resetPassword = (token, password) => async dispatch => {
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  const body = JSON.stringify({ token, password });
+
+  try {
+    await axios.post('/api/auth/reset-password', body, config);
+    toast.success('Password reset successful. Please login with your new password.');
+    return true;
+  } catch (err) {
+    toast.error(err.response.data.message || 'Password reset failed');
+    return false;
+  }
+};
+
+// Logout
+export const logout = () => dispatch => {
+  dispatch({ type: LOGOUT });
+  toast.info('You have been logged out');
+};
+
+// src/store/actions/workspaceActions.js
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import {
+  GET_WORKSPACES,
+  GET_WORKSPACE,
+  CREATE_WORKSPACE,
+  UPDATE_WORKSPACE,
+  DELETE_WORKSPACE,
+  WORKSPACE_ERROR,
+  CLEAR_WORKSPACE,
+  SET_LOADING,
+  CLEAR_LOADING
+} from '../types';
+
+// Get all workspaces
+export const getWorkspaces = () => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get('/api/workspaces');
+
+    dispatch({
+      type: GET_WORKSPACES,
+      payload: res.data.workspaces
+    });
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch workspaces');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Get workspace by ID
+export const getWorkspaceById = (id) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/workspaces/${id}`);
+
+    dispatch({
+      type: GET_WORKSPACE,
+      payload: res.data.workspace
+    });
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch workspace');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Create new workspace
+export const createWorkspace = (formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post('/api/workspaces', formData, config);
+
+    dispatch({
+      type: CREATE_WORKSPACE,
+      payload: res.data.workspace
+    });
+    
+    toast.success('Workspace created successfully');
+    return res.data.workspace;
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to create workspace');
+    return null;
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Update workspace
+export const updateWorkspace = (id, formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.patch(`/api/workspaces/${id}`, formData, config);
+
+    dispatch({
+      type: UPDATE_WORKSPACE,
+      payload: res.data.workspace
+    });
+    
+    toast.success('Workspace updated successfully');
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to update workspace');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Delete workspace
+export const deleteWorkspace = (id) => async dispatch => {
+  if (window.confirm('Are you sure you want to delete this workspace? This action cannot be undone.')) {
+    dispatch({ type: SET_LOADING });
+    
+    try {
+      await axios.delete(`/api/workspaces/${id}`);
+
+      dispatch({
+        type: DELETE_WORKSPACE,
+        payload: id
+      });
+      
+      toast.success('Workspace deleted successfully');
+    } catch (err) {
+      dispatch({
+        type: WORKSPACE_ERROR,
+        payload: { msg: err.response.data.message, status: err.response.status }
+      });
+      
+      toast.error(err.response.data.message || 'Failed to delete workspace');
+    } finally {
+      dispatch({ type: CLEAR_LOADING });
+    }
+  }
+};
+
+// Add member to project
+export const addProjectMember = (projectId, userData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/projects/${projectId}/members`, userData, config);
+
+    dispatch({
+      type: UPDATE_PROJECT,
+      payload: res.data.project
+    });
+    
+    toast.success('Member added successfully');
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to add member');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Remove member from project
+export const removeProjectMember = (projectId, userId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.delete(`/api/projects/${projectId}/members/${userId}`);
+
+    dispatch({
+      type: UPDATE_PROJECT,
+      payload: res.data.project
+    });
+    
+    toast.success('Member removed successfully');
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to remove member');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Clear current project
+export const clearProject = () => dispatch => {
+  dispatch({ type: CLEAR_PROJECT });
+};
+
+// src/store/actions/taskActions.js
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import {
+  GET_TASKS,
+  GET_TASK,
+  CREATE_TASK,
+  UPDATE_TASK,
+  UPDATE_TASK_STATUS,
+  DELETE_TASK,
+  TASK_ERROR,
+  CLEAR_TASK,
+  GET_TASK_COMMENTS,
+  ADD_TASK_COMMENT,
+  SET_LOADING,
+  CLEAR_LOADING
+} from '../types';
+
+// Get all tasks for a project
+export const getTasks = (projectId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/tasks/project/${projectId}`);
+
+    dispatch({
+      type: GET_TASKS,
+      payload: res.data.tasks
+    });
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch tasks');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Get task by ID
+export const getTaskById = (id) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/tasks/${id}`);
+
+    dispatch({
+      type: GET_TASK,
+      payload: res.data.task
+    });
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch task');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Create new task
+export const createTask = (projectId, formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/tasks/project/${projectId}`, formData, config);
+
+    dispatch({
+      type: CREATE_TASK,
+      payload: res.data.task
+    });
+    
+    toast.success('Task created successfully');
+    return res.data.task;
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to create task');
+    return null;
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Update task
+export const updateTask = (id, formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.patch(`/api/tasks/${id}`, formData, config);
+
+    dispatch({
+      type: UPDATE_TASK,
+      payload: res.data.task
+    });
+    
+    toast.success('Task updated successfully');
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to update task');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Update task status (optimized for drag and drop)
+export const updateTaskStatus = (id, status, order) => async dispatch => {
+  // Optimistic update
+  dispatch({
+    type: UPDATE_TASK_STATUS,
+    payload: { _id: id, status, order }
+  });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.patch(`/api/tasks/${id}/status`, { status, order }, config);
+
+    dispatch({
+      type: UPDATE_TASK_STATUS,
+      payload: res.data.task
+    });
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to update task status');
+    
+    // Refetch tasks to restore correct state
+    dispatch(getTasks(id.split('-')[0]));
+  }
+};
+
+// Delete task
+export const deleteTask = (id) => async dispatch => {
+  if (window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+    dispatch({ type: SET_LOADING });
+    
+    try {
+      await axios.delete(`/api/tasks/${id}`);
+
+      dispatch({
+        type: DELETE_TASK,
+        payload: id
+      });
+      
+      toast.success('Task deleted successfully');
+    } catch (err) {
+      dispatch({
+        type: TASK_ERROR,
+        payload: { msg: err.response.data.message, status: err.response.status }
+      });
+      
+      toast.error(err.response.data.message || 'Failed to delete task');
+    } finally {
+      dispatch({ type: CLEAR_LOADING });
+    }
+  }
+};
+
+// Add assignee to task
+export const addTaskAssignee = (taskId, userId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/tasks/${taskId}/assignees`, { userId }, config);
+
+    dispatch({
+      type: UPDATE_TASK,
+      payload: res.data.task
+    });
+    
+    toast.success('Assignee added successfully');
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to add assignee');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Remove assignee from task
+export const removeTaskAssignee = (taskId, userId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.delete(`/api/tasks/${taskId}/assignees/${userId}`);
+
+    dispatch({
+      type: UPDATE_TASK,
+      payload: res.data.task
+    });
+    
+    toast.success('Assignee removed successfully');
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to remove assignee');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Get task comments
+export const getTaskComments = (taskId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/tasks/${taskId}/comments`);
+
+    dispatch({
+      type: GET_TASK_COMMENTS,
+      payload: res.data.comments
+    });
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch comments');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Add comment to task
+export const addTaskComment = (taskId, content, mentions = [], attachments = []) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/tasks/${taskId}/comments`, { 
+      content, 
+      mentions, 
+      attachments 
+    }, config);
+
+    dispatch({
+      type: ADD_TASK_COMMENT,
+      payload: res.data.comment
+    });
+    
+    return res.data.comment;
+  } catch (err) {
+    dispatch({
+      type: TASK_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to add comment');
+    return null;
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Clear current task
+export const clearTask = () => dispatch => {
+  dispatch({ type: CLEAR_TASK });
+};
+
+// src/store/actions/uiActions.js
+import {
+  SET_SIDEBAR_COLLAPSED,
+  SET_SELECTED_VIEW,
+  SET_LOADING,
+  CLEAR_LOADING,
+  SET_ALERT,
+  REMOVE_ALERT
+} from '../types';
+
+// Toggle sidebar collapse
+export const toggleSidebar = (collapsed) => dispatch => {
+  dispatch({
+    type: SET_SIDEBAR_COLLAPSED,
+    payload: collapsed
+  });
+  
+  // Store preference in localStorage
+  localStorage.setItem('sidebarCollapsed', JSON.stringify(collapsed));
+};
+
+// Set selected view
+export const setSelectedView = (view) => dispatch => {
+  dispatch({
+    type: SET_SELECTED_VIEW,
+    payload: view
+  });
+};
+
+// Set loading state
+export const setLoading = () => dispatch => {
+  dispatch({ type: SET_LOADING });
+};
+
+// Clear loading state
+export const clearLoading = () => dispatch => {
+  dispatch({ type: CLEAR_LOADING });
+};
+
+// Set alert
+export const setAlert = (msg, alertType, timeout = 5000) => dispatch => {
+  dispatch({
+    type: SET_ALERT,
+    payload: { msg, alertType }
+  });
+
+  setTimeout(() => dispatch({ type: REMOVE_ALERT }), timeout);
+};
+
+// src/store/actions/notificationActions.js
+import axios from 'axios';
+import {
+  GET_NOTIFICATIONS,
+  MARK_NOTIFICATION_READ,
+  MARK_ALL_NOTIFICATIONS_READ,
+  NOTIFICATION_ERROR,
+  SET_LOADING,
+  CLEAR_LOADING
+} from '../types';
+
+// Get user notifications
+export const getNotifications = () => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get('/api/notifications');
+
+    dispatch({
+      type: GET_NOTIFICATIONS,
+      payload: res.data.notifications
+    });
+  } catch (err) {
+    dispatch({
+      type: NOTIFICATION_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Mark notification as read
+export const markNotificationRead = (id) => async dispatch => {
+  try {
+    await axios.patch(`/api/notifications/${id}/read`);
+
+    dispatch({
+      type: MARK_NOTIFICATION_READ,
+      payload: id
+    });
+  } catch (err) {
+    dispatch({
+      type: NOTIFICATION_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+  }
+};
+
+// Mark all notifications as read
+export const markAllNotificationsRead = () => async dispatch => {
+  try {
+    await axios.patch('/api/notifications/read-all');
+
+    dispatch({
+      type: MARK_ALL_NOTIFICATIONS_READ
+    });
+  } catch (err) {
+    dispatch({
+      type: NOTIFICATION_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+  }
+};
+
+// src/utils/setAuthToken.js
+import axios from 'axios';
+
+export const setAuthToken = token => {
+  if (token) {
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete axios.defaults.headers.common['Authorization'];
+  }
+};
+ workspace
+export const addWorkspaceMember = (workspaceId, userData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/workspaces/${workspaceId}/members`, userData, config);
+
+    dispatch({
+      type: UPDATE_WORKSPACE,
+      payload: res.data.workspace
+    });
+    
+    toast.success('Member added successfully');
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to add member');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Remove member from workspace
+export const removeWorkspaceMember = (workspaceId, userId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.delete(`/api/workspaces/${workspaceId}/members/${userId}`);
+
+    dispatch({
+      type: UPDATE_WORKSPACE,
+      payload: res.data.workspace
+    });
+    
+    toast.success('Member removed successfully');
+  } catch (err) {
+    dispatch({
+      type: WORKSPACE_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to remove member');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Clear current workspace
+export const clearWorkspace = () => dispatch => {
+  dispatch({ type: CLEAR_WORKSPACE });
+};
+
+// src/store/actions/projectActions.js
+import axios from 'axios';
+import { toast } from 'react-toastify';
+import {
+  GET_PROJECTS,
+  GET_PROJECT,
+  CREATE_PROJECT,
+  UPDATE_PROJECT,
+  DELETE_PROJECT,
+  PROJECT_ERROR,
+  CLEAR_PROJECT,
+  SET_LOADING,
+  CLEAR_LOADING
+} from '../types';
+
+// Get all projects for a workspace
+export const getProjects = (workspaceId) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/projects/workspace/${workspaceId}`);
+
+    dispatch({
+      type: GET_PROJECTS,
+      payload: res.data.projects
+    });
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch projects');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Get project by ID
+export const getProjectById = (id) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  try {
+    const res = await axios.get(`/api/projects/${id}`);
+
+    dispatch({
+      type: GET_PROJECT,
+      payload: res.data.project
+    });
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to fetch project');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Create new project
+export const createProject = (workspaceId, formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.post(`/api/projects/workspace/${workspaceId}`, formData, config);
+
+    dispatch({
+      type: CREATE_PROJECT,
+      payload: res.data.project
+    });
+    
+    toast.success('Project created successfully');
+    return res.data.project;
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to create project');
+    return null;
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Update project
+export const updateProject = (id, formData) => async dispatch => {
+  dispatch({ type: SET_LOADING });
+  
+  const config = {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  try {
+    const res = await axios.patch(`/api/projects/${id}`, formData, config);
+
+    dispatch({
+      type: UPDATE_PROJECT,
+      payload: res.data.project
+    });
+    
+    toast.success('Project updated successfully');
+  } catch (err) {
+    dispatch({
+      type: PROJECT_ERROR,
+      payload: { msg: err.response.data.message, status: err.response.status }
+    });
+    
+    toast.error(err.response.data.message || 'Failed to update project');
+  } finally {
+    dispatch({ type: CLEAR_LOADING });
+  }
+};
+
+// Delete project
+export const deleteProject = (id) => async dispatch => {
+  if (window.confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+    dispatch({ type: SET_LOADING });
+    
+    try {
+      await axios.delete(`/api/projects/${id}`);
+
+      dispatch({
+        type: DELETE_PROJECT,
+        payload: id
+      });
+      
+      toast.success('Project deleted successfully');
+    } catch (err) {
+      dispatch({
+        type: PROJECT_ERROR,
+        payload: { msg: err.response.data.message, status: err.response.status }
+      });
+      
+      toast.error(err.response.data.message || 'Failed to delete project');
+    } finally {
+      dispatch({ type: CLEAR_LOADING });
+    }
+  }
+};
+
+// Add member to

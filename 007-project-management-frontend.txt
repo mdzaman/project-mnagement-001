@@ -1,0 +1,628 @@
+// src/App.js
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+import store from './store';
+import { loadUser } from './store/actions/authActions';
+import { setAuthToken } from './utils/setAuthToken';
+
+// Layout components
+import PrivateRoute from './components/routing/PrivateRoute';
+import Navbar from './components/layout/Navbar';
+
+// Auth pages
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import ForgotPassword from './pages/auth/ForgotPassword';
+import ResetPassword from './pages/auth/ResetPassword';
+
+// Main pages
+import Dashboard from './pages/Dashboard';
+import WorkspaceList from './pages/workspace/WorkspaceList';
+import WorkspaceDetail from './pages/workspace/WorkspaceDetail';
+import ProjectBoard from './pages/project/ProjectBoard';
+import ProjectList from './pages/project/ProjectList';
+import ProjectCalendar from './pages/project/ProjectCalendar';
+import TaskDetail from './pages/task/TaskDetail';
+import Profile from './pages/user/Profile';
+import Settings from './pages/user/Settings';
+
+// Check for token in storage
+const token = localStorage.getItem('token');
+if (token) {
+  setAuthToken(token);
+}
+
+const App = () => {
+  useEffect(() => {
+    store.dispatch(loadUser());
+  }, []);
+
+  return (
+    <Provider store={store}>
+      <Router>
+        <div className="min-h-screen bg-gray-50">
+          <ToastContainer position="top-right" autoClose={3000} />
+          <Routes>
+            {/* Auth Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            
+            {/* Private Routes */}
+            <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/workspaces" element={<PrivateRoute><WorkspaceList /></PrivateRoute>} />
+            <Route path="/workspaces/:workspaceId" element={<PrivateRoute><WorkspaceDetail /></PrivateRoute>} />
+            <Route path="/projects/:projectId" element={<PrivateRoute><Navigate to="/projects/:projectId/board" replace /></PrivateRoute>} />
+            <Route path="/projects/:projectId/board" element={<PrivateRoute><ProjectBoard /></PrivateRoute>} />
+            <Route path="/projects/:projectId/list" element={<PrivateRoute><ProjectList /></PrivateRoute>} />
+            <Route path="/projects/:projectId/calendar" element={<PrivateRoute><ProjectCalendar /></PrivateRoute>} />
+            <Route path="/tasks/:taskId" element={<PrivateRoute><TaskDetail /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+          </Routes>
+        </div>
+      </Router>
+    </Provider>
+  );
+};
+
+export default App;
+
+// src/store/index.js
+import { configureStore } from '@reduxjs/toolkit';
+import rootReducer from './reducers';
+
+const store = configureStore({
+  reducer: rootReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: false
+    })
+});
+
+export default store;
+
+// src/store/reducers/index.js
+import { combineReducers } from 'redux';
+import authReducer from './authReducer';
+import workspaceReducer from './workspaceReducer';
+import projectReducer from './projectReducer';
+import taskReducer from './taskReducer';
+import uiReducer from './uiReducer';
+import notificationReducer from './notificationReducer';
+
+export default combineReducers({
+  auth: authReducer,
+  workspace: workspaceReducer,
+  project: projectReducer,
+  task: taskReducer,
+  ui: uiReducer,
+  notification: notificationReducer
+});
+
+// src/store/reducers/authReducer.js
+import {
+  USER_LOADED,
+  AUTH_ERROR,
+  LOGIN_SUCCESS,
+  LOGIN_FAIL,
+  LOGOUT,
+  REGISTER_SUCCESS,
+  REGISTER_FAIL,
+  UPDATE_PROFILE_SUCCESS
+} from '../types';
+
+const initialState = {
+  token: localStorage.getItem('token'),
+  isAuthenticated: null,
+  loading: true,
+  user: null
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case USER_LOADED:
+      return {
+        ...state,
+        isAuthenticated: true,
+        loading: false,
+        user: payload.user
+      };
+    case LOGIN_SUCCESS:
+    case REGISTER_SUCCESS:
+      localStorage.setItem('token', payload.token);
+      return {
+        ...state,
+        ...payload,
+        isAuthenticated: true,
+        loading: false
+      };
+    case UPDATE_PROFILE_SUCCESS:
+      return {
+        ...state,
+        user: payload,
+        loading: false
+      };
+    case AUTH_ERROR:
+    case LOGIN_FAIL:
+    case REGISTER_FAIL:
+    case LOGOUT:
+      localStorage.removeItem('token');
+      return {
+        ...state,
+        token: null,
+        isAuthenticated: false,
+        loading: false,
+        user: null
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/reducers/workspaceReducer.js
+import {
+  GET_WORKSPACES,
+  GET_WORKSPACE,
+  CREATE_WORKSPACE,
+  UPDATE_WORKSPACE,
+  DELETE_WORKSPACE,
+  WORKSPACE_ERROR,
+  CLEAR_WORKSPACE
+} from '../types';
+
+const initialState = {
+  workspaces: [],
+  currentWorkspace: null,
+  loading: true,
+  error: {}
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case GET_WORKSPACES:
+      return {
+        ...state,
+        workspaces: payload,
+        loading: false
+      };
+    case GET_WORKSPACE:
+      return {
+        ...state,
+        currentWorkspace: payload,
+        loading: false
+      };
+    case CREATE_WORKSPACE:
+      return {
+        ...state,
+        workspaces: [payload, ...state.workspaces],
+        loading: false
+      };
+    case UPDATE_WORKSPACE:
+      return {
+        ...state,
+        workspaces: state.workspaces.map(workspace =>
+          workspace._id === payload._id ? payload : workspace
+        ),
+        currentWorkspace: payload,
+        loading: false
+      };
+    case DELETE_WORKSPACE:
+      return {
+        ...state,
+        workspaces: state.workspaces.filter(workspace => workspace._id !== payload),
+        loading: false
+      };
+    case WORKSPACE_ERROR:
+      return {
+        ...state,
+        error: payload,
+        loading: false
+      };
+    case CLEAR_WORKSPACE:
+      return {
+        ...state,
+        currentWorkspace: null,
+        loading: false
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/reducers/projectReducer.js
+import {
+  GET_PROJECTS,
+  GET_PROJECT,
+  CREATE_PROJECT,
+  UPDATE_PROJECT,
+  DELETE_PROJECT,
+  PROJECT_ERROR,
+  CLEAR_PROJECT
+} from '../types';
+
+const initialState = {
+  projects: [],
+  currentProject: null,
+  loading: true,
+  error: {}
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case GET_PROJECTS:
+      return {
+        ...state,
+        projects: payload,
+        loading: false
+      };
+    case GET_PROJECT:
+      return {
+        ...state,
+        currentProject: payload,
+        loading: false
+      };
+    case CREATE_PROJECT:
+      return {
+        ...state,
+        projects: [payload, ...state.projects],
+        loading: false
+      };
+    case UPDATE_PROJECT:
+      return {
+        ...state,
+        projects: state.projects.map(project =>
+          project._id === payload._id ? payload : project
+        ),
+        currentProject: payload,
+        loading: false
+      };
+    case DELETE_PROJECT:
+      return {
+        ...state,
+        projects: state.projects.filter(project => project._id !== payload),
+        loading: false
+      };
+    case PROJECT_ERROR:
+      return {
+        ...state,
+        error: payload,
+        loading: false
+      };
+    case CLEAR_PROJECT:
+      return {
+        ...state,
+        currentProject: null,
+        loading: false
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/reducers/taskReducer.js
+import {
+  GET_TASKS,
+  GET_TASK,
+  CREATE_TASK,
+  UPDATE_TASK,
+  DELETE_TASK,
+  TASK_ERROR,
+  CLEAR_TASK,
+  UPDATE_TASK_STATUS,
+  GET_TASK_COMMENTS,
+  ADD_TASK_COMMENT
+} from '../types';
+
+const initialState = {
+  tasks: [],
+  tasksByStatus: {},
+  currentTask: null,
+  comments: [],
+  loading: true,
+  error: {}
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case GET_TASKS:
+      // Group tasks by status
+      const tasksByStatus = payload.reduce((acc, task) => {
+        if (!acc[task.status]) {
+          acc[task.status] = [];
+        }
+        acc[task.status].push(task);
+        return acc;
+      }, {});
+      
+      return {
+        ...state,
+        tasks: payload,
+        tasksByStatus,
+        loading: false
+      };
+    case GET_TASK:
+      return {
+        ...state,
+        currentTask: payload,
+        loading: false
+      };
+    case CREATE_TASK:
+      // Add new task to appropriate status group
+      const updatedTasksByStatusCreate = { ...state.tasksByStatus };
+      if (!updatedTasksByStatusCreate[payload.status]) {
+        updatedTasksByStatusCreate[payload.status] = [];
+      }
+      updatedTasksByStatusCreate[payload.status].push(payload);
+      
+      return {
+        ...state,
+        tasks: [payload, ...state.tasks],
+        tasksByStatus: updatedTasksByStatusCreate,
+        loading: false
+      };
+    case UPDATE_TASK:
+      // Update task in appropriate status group
+      const updatedTasks = state.tasks.map(task =>
+        task._id === payload._id ? payload : task
+      );
+      
+      // Regroup tasks by status
+      const regroupedTasksByStatus = updatedTasks.reduce((acc, task) => {
+        if (!acc[task.status]) {
+          acc[task.status] = [];
+        }
+        acc[task.status].push(task);
+        return acc;
+      }, {});
+      
+      return {
+        ...state,
+        tasks: updatedTasks,
+        tasksByStatus: regroupedTasksByStatus,
+        currentTask: state.currentTask && state.currentTask._id === payload._id ? payload : state.currentTask,
+        loading: false
+      };
+    case UPDATE_TASK_STATUS:
+      // Handle status change
+      const statusUpdatedTasks = state.tasks.map(task =>
+        task._id === payload._id ? payload : task
+      );
+      
+      // Regroup tasks by status after status change
+      const statusRegroupedTasksByStatus = statusUpdatedTasks.reduce((acc, task) => {
+        if (!acc[task.status]) {
+          acc[task.status] = [];
+        }
+        acc[task.status].push(task);
+        return acc;
+      }, {});
+      
+      return {
+        ...state,
+        tasks: statusUpdatedTasks,
+        tasksByStatus: statusRegroupedTasksByStatus,
+        currentTask: state.currentTask && state.currentTask._id === payload._id ? payload : state.currentTask,
+        loading: false
+      };
+    case DELETE_TASK:
+      // Remove task from all collections
+      const filteredTasks = state.tasks.filter(task => task._id !== payload);
+      
+      // Regroup remaining tasks by status
+      const filteredTasksByStatus = filteredTasks.reduce((acc, task) => {
+        if (!acc[task.status]) {
+          acc[task.status] = [];
+        }
+        acc[task.status].push(task);
+        return acc;
+      }, {});
+      
+      return {
+        ...state,
+        tasks: filteredTasks,
+        tasksByStatus: filteredTasksByStatus,
+        loading: false
+      };
+    case GET_TASK_COMMENTS:
+      return {
+        ...state,
+        comments: payload,
+        loading: false
+      };
+    case ADD_TASK_COMMENT:
+      return {
+        ...state,
+        comments: [...state.comments, payload],
+        loading: false
+      };
+    case TASK_ERROR:
+      return {
+        ...state,
+        error: payload,
+        loading: false
+      };
+    case CLEAR_TASK:
+      return {
+        ...state,
+        currentTask: null,
+        comments: [],
+        loading: false
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/reducers/uiReducer.js
+import { 
+  SET_SIDEBAR_COLLAPSED, 
+  SET_SELECTED_VIEW,
+  SET_LOADING,
+  CLEAR_LOADING,
+  SET_ALERT,
+  REMOVE_ALERT 
+} from '../types';
+
+const initialState = {
+  sidebarCollapsed: false,
+  selectedView: 'board',
+  loading: false,
+  alert: null
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case SET_SIDEBAR_COLLAPSED:
+      return {
+        ...state,
+        sidebarCollapsed: payload
+      };
+    case SET_SELECTED_VIEW:
+      return {
+        ...state,
+        selectedView: payload
+      };
+    case SET_LOADING:
+      return {
+        ...state,
+        loading: true
+      };
+    case CLEAR_LOADING:
+      return {
+        ...state,
+        loading: false
+      };
+    case SET_ALERT:
+      return {
+        ...state,
+        alert: payload
+      };
+    case REMOVE_ALERT:
+      return {
+        ...state,
+        alert: null
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/reducers/notificationReducer.js
+import {
+  GET_NOTIFICATIONS,
+  MARK_NOTIFICATION_READ,
+  MARK_ALL_NOTIFICATIONS_READ,
+  NOTIFICATION_ERROR
+} from '../types';
+
+const initialState = {
+  notifications: [],
+  loading: true,
+  error: {}
+};
+
+export default function(state = initialState, action) {
+  const { type, payload } = action;
+
+  switch (type) {
+    case GET_NOTIFICATIONS:
+      return {
+        ...state,
+        notifications: payload,
+        loading: false
+      };
+    case MARK_NOTIFICATION_READ:
+      return {
+        ...state,
+        notifications: state.notifications.map(notification =>
+          notification._id === payload ? { ...notification, read: true } : notification
+        ),
+        loading: false
+      };
+    case MARK_ALL_NOTIFICATIONS_READ:
+      return {
+        ...state,
+        notifications: state.notifications.map(notification => ({ ...notification, read: true })),
+        loading: false
+      };
+    case NOTIFICATION_ERROR:
+      return {
+        ...state,
+        error: payload,
+        loading: false
+      };
+    default:
+      return state;
+  }
+}
+
+// src/store/types.js
+// Auth
+export const USER_LOADED = 'USER_LOADED';
+export const AUTH_ERROR = 'AUTH_ERROR';
+export const LOGIN_SUCCESS = 'LOGIN_SUCCESS';
+export const LOGIN_FAIL = 'LOGIN_FAIL';
+export const LOGOUT = 'LOGOUT';
+export const REGISTER_SUCCESS = 'REGISTER_SUCCESS';
+export const REGISTER_FAIL = 'REGISTER_FAIL';
+export const UPDATE_PROFILE_SUCCESS = 'UPDATE_PROFILE_SUCCESS';
+
+// Workspaces
+export const GET_WORKSPACES = 'GET_WORKSPACES';
+export const GET_WORKSPACE = 'GET_WORKSPACE';
+export const CREATE_WORKSPACE = 'CREATE_WORKSPACE';
+export const UPDATE_WORKSPACE = 'UPDATE_WORKSPACE';
+export const DELETE_WORKSPACE = 'DELETE_WORKSPACE';
+export const WORKSPACE_ERROR = 'WORKSPACE_ERROR';
+export const CLEAR_WORKSPACE = 'CLEAR_WORKSPACE';
+
+// Projects
+export const GET_PROJECTS = 'GET_PROJECTS';
+export const GET_PROJECT = 'GET_PROJECT';
+export const CREATE_PROJECT = 'CREATE_PROJECT';
+export const UPDATE_PROJECT = 'UPDATE_PROJECT';
+export const DELETE_PROJECT = 'DELETE_PROJECT';
+export const PROJECT_ERROR = 'PROJECT_ERROR';
+export const CLEAR_PROJECT = 'CLEAR_PROJECT';
+
+// Tasks
+export const GET_TASKS = 'GET_TASKS';
+export const GET_TASK = 'GET_TASK';
+export const CREATE_TASK = 'CREATE_TASK';
+export const UPDATE_TASK = 'UPDATE_TASK';
+export const UPDATE_TASK_STATUS = 'UPDATE_TASK_STATUS';
+export const DELETE_TASK = 'DELETE_TASK';
+export const TASK_ERROR = 'TASK_ERROR';
+export const CLEAR_TASK = 'CLEAR_TASK';
+export const GET_TASK_COMMENTS = 'GET_TASK_COMMENTS';
+export const ADD_TASK_COMMENT = 'ADD_TASK_COMMENT';
+
+// UI
+export const SET_SIDEBAR_COLLAPSED = 'SET_SIDEBAR_COLLAPSED';
+export const SET_SELECTED_VIEW = 'SET_SELECTED_VIEW';
+export const SET_LOADING = 'SET_LOADING';
+export const CLEAR_LOADING = 'CLEAR_LOADING';
+export const SET_ALERT = 'SET_ALERT';
+export const REMOVE_ALERT = 'REMOVE_ALERT';
+
+// Notifications
+export const GET_NOTIFICATIONS = 'GET_NOTIFICATIONS';
+export const MARK_NOTIFICATION_READ = 'MARK_NOTIFICATION_READ';
+export const MARK_ALL_NOTIFICATIONS_READ = 'MARK_ALL_NOTIFICATIONS_READ';
+export const NOTIFICATION_ERROR = 'NOTIFICATION_ERROR';
