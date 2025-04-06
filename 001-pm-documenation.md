@@ -77,4 +77,17 @@ Now, let's begin building the solution with a focus on the user interface:
    - Shows activity history
    - Displays relationship to other items
 
-Would you like me to continue with more detailed specifications for the user interface, or should we move on to other aspects of the solution like data architecture or specific feature implementation?
+
+## Technology Stack
+
+### Frontend
+- React.js with TypeScript
+- Redux for state management
+- Tailwind CSS for styling
+- Axios for API calls
+
+### Backend
+- Node.js with Express
+- MongoDB for database
+- JWT for authentication
+
