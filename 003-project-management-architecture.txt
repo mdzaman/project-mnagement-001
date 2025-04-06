@@ -1,0 +1,231 @@
+# Project Management System Architecture
+
+## Overview
+
+This document outlines the architecture for a comprehensive project management system similar to Asana and Monday.com. The system follows a modern microservices architecture with a React frontend and Node.js backend.
+
+## System Architecture
+
+```
+┌─────────────────┐     ┌──────────────────────────────────────┐
+│                 │     │               Backend                │
+│    Frontend     │     │                                      │
+│    (React)      │◄────┤  ┌──────────┐       ┌────────────┐   │
+│                 │     │  │          │       │            │   │
+└────────┬────────┘     │  │   API    │◄─────►│  Services  │   │
+         │              │  │  Layer   │       │            │   │
+         │              │  │          │       └──────┬─────┘   │
+         │              │  └──────────┘              │         │
+         │              │                            │         │
+         │              │                     ┌──────▼─────┐   │
+         │              │                     │            │   │
+         └──────────────┼─────────────────────┤ Database   │   │
+                        │                     │            │   │
+                        │                     └────────────┘   │
+                        │                                      │
+                        └──────────────────────────────────────┘
+```
+
+## Database Design
+
+### Collections
+
+1. **Users**
+   - _id: ObjectId
+   - email: String (unique)
+   - passwordHash: String
+   - name: String
+   - avatar: String
+   - role: String (admin, member)
+   - settings: Object
+   - createdAt: Date
+   - updatedAt: Date
+
+2. **Workspaces**
+   - _id: ObjectId
+   - name: String
+   - description: String
+   - owner: ObjectId (ref: Users)
+   - members: Array of { userId: ObjectId, role: String }
+   - settings: Object
+   - createdAt: Date
+   - updatedAt: Date
+
+3. **Projects**
+   - _id: ObjectId
+   - name: String
+   - description: String
+   - workspaceId: ObjectId (ref: Workspaces)
+   - status: String
+   - startDate: Date
+   - dueDate: Date
+   - owner: ObjectId (ref: Users)
+   - members: Array of { userId: ObjectId, role: String }
+   - settings: Object
+   - createdAt: Date
+   - updatedAt: Date
+
+4. **Tasks**
+   - _id: ObjectId
+   - title: String
+   - description: String
+   - projectId: ObjectId (ref: Projects)
+   - status: String
+   - priority: String
+   - assignees: Array of ObjectId (ref: Users)
+   - startDate: Date
+   - dueDate: Date
+   - tags: Array of String
+   - attachments: Array of { name: String, url: String, type: String }
+   - customFields: Object
+   - parent: ObjectId (ref: Tasks, for subtasks)
+   - dependencies: Array of ObjectId (ref: Tasks)
+   - createdBy: ObjectId (ref: Users)
+   - createdAt: Date
+   - updatedAt: Date
+
+5. **Comments**
+   - _id: ObjectId
+   - content: String
+   - taskId: ObjectId (ref: Tasks)
+   - author: ObjectId (ref: Users)
+   - mentions: Array of ObjectId (ref: Users)
+   - attachments: Array of { name: String, url: String, type: String }
+   - createdAt: Date
+   - updatedAt: Date
+
+6. **Activities**
+   - _id: ObjectId
+   - entityType: String (task, project, workspace)
+   - entityId: ObjectId
+   - action: String
+   - userId: ObjectId (ref: Users)
+   - metadata: Object
+   - createdAt: Date
+
+7. **Notifications**
+   - _id: ObjectId
+   - userId: ObjectId (ref: Users)
+   - type: String
+   - title: String
+   - content: String
+   - relatedTo: { type: String, id: ObjectId }
+   - read: Boolean
+   - createdAt: Date
+
+## API Endpoints
+
+### Authentication
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/forgot-password
+- POST /api/auth/reset-password
+- GET /api/auth/me
+
+### Users
+- GET /api/users
+- GET /api/users/:id
+- PATCH /api/users/:id
+- DELETE /api/users/:id
+- GET /api/users/:id/tasks
+
+### Workspaces
+- GET /api/workspaces
+- POST /api/workspaces
+- GET /api/workspaces/:id
+- PATCH /api/workspaces/:id
+- DELETE /api/workspaces/:id
+- POST /api/workspaces/:id/members
+- DELETE /api/workspaces/:id/members/:userId
+
+### Projects
+- GET /api/workspaces/:workspaceId/projects
+- POST /api/workspaces/:workspaceId/projects
+- GET /api/projects/:id
+- PATCH /api/projects/:id
+- DELETE /api/projects/:id
+- POST /api/projects/:id/members
+- DELETE /api/projects/:id/members/:userId
+
+### Tasks
+- GET /api/projects/:projectId/tasks
+- POST /api/projects/:projectId/tasks
+- GET /api/tasks/:id
+- PATCH /api/tasks/:id
+- DELETE /api/tasks/:id
+- PATCH /api/tasks/:id/status
+- POST /api/tasks/:id/assignees
+- DELETE /api/tasks/:id/assignees/:userId
+- GET /api/tasks/:id/comments
+
+### Comments
+- POST /api/tasks/:taskId/comments
+- PATCH /api/comments/:id
+- DELETE /api/comments/:id
+
+### Notifications
+- GET /api/notifications
+- PATCH /api/notifications/:id/read
+- PATCH /api/notifications/read-all
+
+## Frontend Routes
+
+- /login
+- /register
+- /forgot-password
+- /reset-password/:token
+- /dashboard
+- /workspaces
+- /workspaces/:workspaceId
+- /projects/:projectId
+- /projects/:projectId/board
+- /projects/:projectId/list
+- /projects/:projectId/calendar
+- /projects/:projectId/gantt
+- /projects/:projectId/settings
+- /tasks/:taskId
+- /profile
+- /settings
+
+## Authentication Flow
+
+1. User registers or logs in
+2. Server validates credentials and issues JWT token
+3. Token is stored in localStorage/cookies
+4. Token is sent with each API request in Authorization header
+5. Server validates token for each protected endpoint
+6. Token expires after a set time, requiring re-login
+
+## Real-time Features
+
+Implemented using Socket.io:
+
+- Task updates
+- Comments
+- Notifications
+- User presence
+- Collaborative editing
+
+## Offline Support
+
+- Service Workers for caching static assets
+- IndexedDB for offline data storage
+- Background sync for pending changes
+
+## Deployment Architecture
+
+- Frontend: Vercel/Netlify
+- Backend: Docker containers on AWS ECS/GCP Cloud Run
+- Database: MongoDB Atlas
+- File Storage: AWS S3/GCP Cloud Storage
+- CDN: Cloudflare
+
+## Security Considerations
+
+- HTTPS only
+- JWT with short expiration
+- CSRF protection
+- Input validation
+- Rate limiting
+- Data encryption
+- Regular security audits
